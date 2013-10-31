@@ -1,14 +1,18 @@
 module ofg::ast::Java2OFG
 
+import IO;
 import Set;
 import List;
 import ofg::ast::FlowLanguage;
 import lang::java::m3::TypeSymbol;
 import lang::java::jdt::m3::AST;
 
-Program createOFG(loc project) {
-	asts = createAstsFromEclipseProject(project, true);
+Program createOFG(loc project) = createOFG(createAstsFromEclipseProject(project, true));
+
+Program createOFG(set[Declaration] asts) {
+	println("Getting decls");
 	decls = getDeclarations(asts);
+	println("Getting stms");
 	stms = getStatements(asts);
 	return program(decls, stms);
 }
@@ -41,18 +45,26 @@ bool ignoreType(TypeSymbol::intersection(tt)) = (false | it || ignoreType(t) | t
 bool ignoreType(TypeSymbol::union(tt)) = (false | it || ignoreType(t) | t <- tt);
 bool ignoreType(TypeSymbol::\class(t,_)) = t == |java+class:///java/lang/String|;
 bool ignoreType(TypeSymbol::\object()) = false;
-bool ignoreType(TypeSymbol::\array(t,_)) = ignoreType(t);
+bool ignoreType(TypeSymbol::\array(_,_)) = true;
 default bool ignoreType(TypeSymbol t) = true;
 
 
 set[Decl] getDeclarations(set[Declaration] asts) 
 	= { Decl::attribute(v@decl) | /field(t,frags) <- asts, !ignoreType(t), v <- frags}
-	+ { Decl::method(m@decl, [p@decl | p:parameter(t,_,_) <- params, !ignoreType(t)]) | /m:Declaration::method(_,_, params, _, _)  <- asts}
-	+ { Decl::method(m@decl, [p@decl | p:parameter(t,_,_) <- params, !ignoreType(t)]) | /m:Declaration::method(_,_, params, _)  <- asts}
-	+ { Decl::constructor(c@decl, [p@decl | p:parameter(t,_,_) <- params, !ignoreType(t)]) | /c:Declaration::method(_, params, _,_)  <- asts}      
+	+ { Decl::method(m@decl, [p@decl | p:parameter(t,_,_) <- params, !ignoreType(t)]) | /m:Declaration::method(_,_, list[Expression] params, _, _)  <- asts}
+	+ { Decl::method(m@decl, [p@decl | p:parameter(t,_,_) <- params, !ignoreType(t)]) | /m:Declaration::method(_,_, list[Expression] params, _)  <- asts}
+	+ { Decl::constructor(c@decl, [p@decl | p:parameter(t,_,_) <- params, !ignoreType(t)]) | /c:Declaration::method(_, list[Expression] params, _,_)  <- asts}      
 	// add implicit constructor
 	+ { Decl::constructor((c@decl)[scheme="java+constructor"] + "<name>()", []) | /c:class(name, _, _, b) <- asts, !(Declaration::method(_, _, _, _) <- b)}   
 	;
+
+Id lhsDecl(arrayAccess(e,_)) = e@decl;
+Id lhsDecl(f:fieldAccess(_,_,_)) = f@decl;
+Id lhsDecl(f:fieldAccess(_,_)) = f@decl;
+Id lhsDecl(v:variable(_,_)) = v@decl;
+Id lhsDecl(s:simpleName(_)) = s@decl;
+Id lhsDecl(q:Expression::qualifier(_,_)) = q@decl;
+default Id lhsDecl(Expression e) { throw "forgot: <e>"; }
 
 set[Stm] getStatements(set[Declaration] asts) {
 	allMethods 
@@ -76,10 +88,14 @@ set[Stm] getStatements(set[Declaration] asts) {
 		top-down-break visit(b) {
 			case \return(e) : 
 				result += { *translate(m@decl, m@decl + "return", e)};
-			case Expression::assignment(l,_,r) : 
-				result += { *translate(m@decl, l@decl, r)};
+			case e:Expression::assignment(l,_,r) : 
+				if (!ignoreType(e@typ)) {
+					result += { *translate(m@decl, lhsDecl(l), r)};
+				}
 			case v:Expression::variable(_,_,r) : 
-				result += { *translate(m@decl, v@decl, r)};
+				if (!ignoreType(v@typ)) {
+					result += { *translate(m@decl, v@decl, r)};
+				}
 			// regular method calls with no target
 			case m2:Expression::methodCall(_ ,_, _):
 				result += { *translate(m@decl, emptyId, m2)};
@@ -93,6 +109,7 @@ set[Stm] getStatements(set[Declaration] asts) {
 // TODO: handle a.b.c => B.c
 
 set[Stm] translate(Id base, Id target, c:cast(_, e)) {
+	if (ignoreType(c@typ)) return {};
 	result = translate(base, target, e);
 	return { s.target == target ? s[cast=c@typ.decl] : s | s <- result};
 }
@@ -122,21 +139,23 @@ set[Stm] translate(Id base, Id target, m:methodCall(_, r, n, a)) {
 	}
 	else {
 		<newId, newStms> = unnestExpressions(base, r@src.offset, [r]);
-		assert size(newId) == 1;
-		recv = getOneFrom(newId);
+		if (size(newId) > 0) {
+			assert size(newId) == 1;
+			recv = getOneFrom(newId);
+		}
 		stms += newStms;
 	}
 	<args, newStms> = unnestExpressions(base, m@src.offset, a);
 	return newStms + { Stm::call(target, emptyId, recv, m@decl, args) };
 }
 
-set[Stm] translate(Id base, Id target, ob:newObject(_, t, a))
-	= translate(base, target, newObject(t, a)[@decl = ob@decl][@typ = ob@typ]);
-set[Stm] translate(Id base, Id target, ob:newObject(_, t, a, _))
-	= translate(base, target, newObject(t, a)[@decl = ob@decl][@typ = ob@typ]);
-set[Stm] translate(Id base, Id target, ob:newObject(t, a,_))
-	= translate(base, target, newObject(t, a)[@decl = ob@decl][@typ = ob@typ]);
-set[Stm] translate(Id base, Id target, ob:newObject(t, a)) {
+set[Stm] translate(Id base, Id target, ob:newObject(_, Type t, a))
+	= translate(base, target, newObject(t, a)[@decl = ob@decl][@typ = ob@typ][@src=ob@src]);
+set[Stm] translate(Id base, Id target, ob:newObject(_, Type t, a, _))
+	= translate(base, target, newObject(t, a)[@decl = ob@decl][@typ = ob@typ][@src=ob@src]);
+set[Stm] translate(Id base, Id target, ob:newObject(Type t, a,_))
+	= translate(base, target, newObject(t, a)[@decl = ob@decl][@typ = ob@typ][@src=ob@src]);
+set[Stm] translate(Id base, Id target, ob:newObject(Type t, a)) {
 	assert target != emptyId;
 	if (ignoreType(ob@typ))
 		return {};
@@ -147,13 +166,16 @@ set[Stm] translate(Id base, Id target, ob:newObject(t, a)) {
 
 bool simpleExpression(fieldAccess(_,_,_)) = true;
 bool simpleExpression(fieldAccess(_,_)) = true;
-bool simpleExpression(cast(_,e)) = simpleExpression(e);
 bool simpleExpression(Expression::qualifier(_,e)) = simpleExpression(e);
 bool simpleExpression(this()) = true;
 bool simpleExpression(this(_)) = true;
 bool simpleExpression(simpleName(_)) = true;
-bool simpleExpression(arrayAccess(_,_)) = true;
 default bool simpleExpression(Expression e) = false;
+
+Expression removeNesting(cast(_, e)) = removeNesting(e);
+Expression removeNesting(arrayAccess(e, _)) = removeNesting(e);
+Expression removeNesting(\bracket(e)) = removeNesting(e);
+default Expression removeNesting(Expression e) = e;
 
 // for arguments we have to unnestExpressions
 //  .. = new A(new B());
@@ -164,8 +186,14 @@ tuple[list[Id], set[Stm]] unnestExpressions(Id prefix, int uniqNum, list[Express
 	list[Id] ids = [];
 	set[Stm] newStms = {};
 	for (i <- [0..size(exprs)], Expression ce := exprs[i], !ignoreType(ce@typ)) {
+		ce = removeNesting(ce);
 		if (simpleExpression(ce)) {
-			ids += [ce@decl];	
+			if (ce is this) {
+				ids += [prefix + "this"];
+			} 
+			else {
+				ids += [ce@decl];
+			}
 		}
 		else {
 			newId = prefix + "__param<uniqNum>_<i>";
