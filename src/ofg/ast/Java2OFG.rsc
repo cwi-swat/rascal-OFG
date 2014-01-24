@@ -24,8 +24,7 @@ set[Declaration] fixCollections(set[Declaration] ast) {
 			if (isContainerInsert(receiver, methodName)) {
 				insert assignment(receiver, "=", correctInsertArg(receiver, methodName, args))
 					[@typ = receiver@typ]
-					[@src = oe@src]
-					[@synth = true];
+					[@src = oe@src];
 			}
 			else if(isContainerExtract(receiver, methodName)) {
 				insert receiver;
@@ -136,6 +135,11 @@ set[Stm] getStatements(set[Declaration] asts) {
 			case e:Expression::assignment(l,_,r) : 
 				if (!ignoreType(e@typ)) {
 					result += { *translate(m@decl, lhsDecl(l), r)};
+				} else {
+					// there can be a nested assignment caused by the rewriting done earlier (containers)
+					for (/e2:assignment(l2,_,r2) := r && !ignoreType(e2@typ)) {
+						result += { *translate(m@decl, lhsDecl(l2), r2)};
+					}
 				}
 			case v:Expression::variable(_,_,r) : 
 				if (!ignoreType(v@typ)) {
