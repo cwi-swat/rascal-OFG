@@ -17,6 +17,10 @@ Program createOFG(set[Declaration] asts) {
 	return program(decls, stms);
 }
 
+set[Declaration] fixCollections(set[Declaration] ast) {
+
+}
+
 set[str] primitiveTypes = {
 	"Byte" ,"java.lang.Byte"
 	,"Character" ,"java.lang.Character"
@@ -30,14 +34,42 @@ bool ignoreType(arrayType(t)) = ignoreType(t);
 bool ignoreType(upperbound(t)) = ignoreType(t);
 bool ignoreType(lowerbound(t)) = ignoreType(t);
 bool ignoreType(parameterizedType(_)) = false;
-bool ignoreType(Type::qualifier(_)) = false;
-bool ignoreType(simpleType(t)) = t in primitiveTypes;
+bool ignoreType(Type::qualifiedType(t,_)) = ignoreType(t);
+bool ignoreType(simpleType(t)) = ignoreType(t);// t in primitiveTypes;
 bool ignoreType(unionType(tt)) = (false | it || ignoreType(t) | t <- tt);
 default bool ignoreType(Type t) = true;
 
+bool ignoreType(Expression::simpleName(n)) = n in primitiveTypes;
+bool ignoreType(Expression::qualifiedName(q,n)) {
+	if (simpleName(nn) := n && nn in primitiveTypes) {
+		// could be a primitive type	
+		// lets build the fullTypeName
+		result = nn;
+		parent = q;
+		while (true) {
+			if (qualifiedName(p,simpleName(c)) := parent) {
+				result = c + "." + result;	
+				parent = p;
+			}	
+			else if (simpleName(c) := parent) {	
+				result = c + "." + result;
+				break;
+			}
+			else {
+				throw "unexpected parent c";	
+			}
+		}
+		return result in primitiveTypes;
+	}
+	else {
+		return false;	
+	}
+}
+default bool ignoreType(Expression e) { throw "you forgot: <e>"; }
+
 
 bool ignoreType(TypeSymbol::interface(_,_)) = false;
-bool ignoreType(TypeSymbol::\enum(_,_)) = false;
+bool ignoreType(TypeSymbol::\enum(_)) = false;
 bool ignoreType(TypeSymbol::\typeParameter(_,_)) = false;
 bool ignoreType(TypeSymbol::\wildcard(_)) = false;
 bool ignoreType(TypeSymbol::\capture(_,_)) = false;
@@ -51,11 +83,11 @@ default bool ignoreType(TypeSymbol t) = true;
 
 set[Decl] getDeclarations(set[Declaration] asts) 
 	= { Decl::attribute(v@decl) | /field(t,frags) <- asts, !ignoreType(t), v <- frags}
-	+ { Decl::method(m@decl, [p@decl | p:parameter(t,_,_) <- params, !ignoreType(t)]) | /m:Declaration::method(_,_, list[Expression] params, _, _)  <- asts}
-	+ { Decl::method(m@decl, [p@decl | p:parameter(t,_,_) <- params, !ignoreType(t)]) | /m:Declaration::method(_,_, list[Expression] params, _)  <- asts}
-	+ { Decl::constructor(c@decl, [p@decl | p:parameter(t,_,_) <- params, !ignoreType(t)]) | /c:Declaration::method(_, list[Expression] params, _,_)  <- asts}      
+	+ { Decl::method(m@decl, [p@decl | p:parameter(t,_,_) <- params, !ignoreType(t)]) | /m:Declaration::method(_,_, list[Declaration] params, _, _)  <- asts}
+	+ { Decl::method(m@decl, [p@decl | p:parameter(t,_,_) <- params, !ignoreType(t)]) | /m:Declaration::method(_,_, list[Declaration] params, _)  <- asts}
+	+ { Decl::constructor(c@decl, [p@decl | p:parameter(t,_,_) <- params, !ignoreType(t)]) | /c:Declaration::constructor(_, list[Declaration] params, _,_)  <- asts}      
 	// add implicit constructor
-	+ { Decl::constructor((c@decl)[scheme="java+constructor"] + "<name>()", []) | /c:class(name, _, _, b) <- asts, !(Declaration::method(_, _, _, _) <- b)}   
+	+ { Decl::constructor((c@decl)[scheme="java+constructor"] + "<name>()", []) | /c:class(name, _, _, b) <- asts, !(Declaration::constructor(_, _, _, _) <- b)}   
 	;
 
 Id lhsDecl(arrayAccess(e,_)) = e@decl;
@@ -63,20 +95,20 @@ Id lhsDecl(f:fieldAccess(_,_,_)) = f@decl;
 Id lhsDecl(f:fieldAccess(_,_)) = f@decl;
 Id lhsDecl(v:variable(_,_)) = v@decl;
 Id lhsDecl(s:simpleName(_)) = s@decl;
-Id lhsDecl(q:Expression::qualifier(_,_)) = q@decl;
+Id lhsDecl(q:qualifiedName(_,_)) = q@decl;
 default Id lhsDecl(Expression e) { throw "forgot: <e>"; }
 
 set[Stm] getStatements(set[Declaration] asts) {
 	allMethods 
 		= { m | /m:Declaration::method(_,_,_,_,_) <- asts}
 		+ {Declaration::method(t, n, p, e, empty())[@decl=m@decl] | /m:Declaration::method(Type t,n,p,e) <- asts} 
-		+ {Declaration::method(simpleType(n), n, p, e, b)[@decl=m@decl] | /m:Declaration::method(str n,p,e, b) <- asts} 
+		+ {Declaration::method(simpleType(simpleName(n)), n, p, e, b)[@decl=m@decl] | /m:Declaration::constructor(str n,p,e, b) <- asts} 
 	;
 	// now remove all nested classes to make all statements relative to a method
 	allMethods = visit(allMethods) {
-		case declarationExpression(Declaration::class(_)) => null()
-		case declarationExpression(Declaration::class(_,_,_,_)) => null()
-		case declarationExpression(Declaration::enum(_,_,_,_)) => null()
+		case declarationExpression(Declaration::class(_)) => Expression::null()
+		case declarationExpression(Declaration::class(_,_,_,_)) => Expression::null()
+		case declarationExpression(Declaration::enum(_,_,_,_)) => Expression::null()
 		case declarationStatement(Declaration::class(_)) => empty()
 		case declarationStatement(Declaration::class(_,_,_,_)) => empty()
 		case declarationStatement(Declaration::enum(_,_,_,_)) => empty()
@@ -149,12 +181,20 @@ set[Stm] translate(Id base, Id target, m:methodCall(_, r, n, a)) {
 	return newStms + { Stm::call(target, emptyId, recv, m@decl, args) };
 }
 
+private Expression newObject(Type t, list[Expression] args, Expression original) {
+	assert original is newObject;
+	return newObject(t, args)
+		[@typ = original@typ]
+		[@src = original@src]
+		[@decl = original@decl];
+}
+
 set[Stm] translate(Id base, Id target, ob:newObject(_, Type t, a))
-	= translate(base, target, newObject(t, a)[@decl = ob@decl][@typ = ob@typ][@src=ob@src]);
+	= translate(base, target, newObject(t, a, ob));
 set[Stm] translate(Id base, Id target, ob:newObject(_, Type t, a, _))
-	= translate(base, target, newObject(t, a)[@decl = ob@decl][@typ = ob@typ][@src=ob@src]);
+	= translate(base, target, newObject(t, a, ob));
 set[Stm] translate(Id base, Id target, ob:newObject(Type t, a,_))
-	= translate(base, target, newObject(t, a)[@decl = ob@decl][@typ = ob@typ][@src=ob@src]);
+	= translate(base, target, newObject(t, a, ob));
 set[Stm] translate(Id base, Id target, ob:newObject(Type t, a)) {
 	assert target != emptyId;
 	if (ignoreType(ob@typ))
@@ -166,7 +206,7 @@ set[Stm] translate(Id base, Id target, ob:newObject(Type t, a)) {
 
 bool simpleExpression(fieldAccess(_,_,_)) = true;
 bool simpleExpression(fieldAccess(_,_)) = true;
-bool simpleExpression(Expression::qualifier(_,e)) = simpleExpression(e);
+bool simpleExpression(qualifiedName(_,e)) = simpleExpression(e);
 bool simpleExpression(this()) = true;
 bool simpleExpression(this(_)) = true;
 bool simpleExpression(simpleName(_)) = true;
