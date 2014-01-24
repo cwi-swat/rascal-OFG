@@ -17,8 +17,21 @@ Program createOFG(set[Declaration] asts) {
 	return program(decls, stms);
 }
 
-set[Declaration] fixCollections(set[Declaration] ast) {
 
+set[Declaration] fixCollections(set[Declaration] ast) {
+	return visit (ast) {
+		case oe:methodCall(_, Expression receiver, methodName,	args):  {
+			if (isContainerInsert(receiver, methodName)) {
+				insert assignment(receiver, "=", correctInsertArg(receiver, methodName, args))
+					[@typ = receiver@typ]
+					[@src = oe@src]
+					[@synth = true];
+			}
+			else if(isContainerExtract(receiver, methodName)) {
+				insert receiver;
+			}
+		}
+	};
 }
 
 set[str] primitiveTypes = {
@@ -160,6 +173,12 @@ set[Stm] translate(Id base, Id target, f:fieldAccess(_,_))
 
 set[Stm] translate(Id base, Id target, s:simpleName(_))
 	= {Stm::assign(target, emptyId, s@decl)};
+
+// nested assignment a = b = c;
+set[Stm] translate(Id base, Id target, a:assignment(l,_,r)) 
+	= translate(base, target, l)
+	+ translate(base, target, r)
+	;
 
 set[Stm] translate(Id base, Id target, m:methodCall(s, n, a))
 	= translate(base, target, methodCall(s, this(), n, a)[@decl=m@decl][@typ=m@typ][@src=m@src]);
