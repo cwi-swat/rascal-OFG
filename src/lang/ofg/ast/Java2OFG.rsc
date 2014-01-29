@@ -1,9 +1,9 @@
-module ofg::ast::Java2OFG
+module lang::ofg::ast::Java2OFG
 
 import IO;
 import Set;
 import List;
-import ofg::ast::FlowLanguage;
+import lang::ofg::ast::FlowLanguage;
 import lang::java::m3::TypeSymbol;
 import lang::java::jdt::m3::AST;
 
@@ -148,13 +148,13 @@ set[Decl] getDeclarations(set[Declaration] asts)
 	+ { Decl::constructor((c@decl)[scheme="java+constructor"] + "<name>()", []) | /c:class(name, _, _, b) <- asts, !(Declaration::constructor(_, _, _, _) <- b)}   
 	;
 
-Id lhsDecl(arrayAccess(e,_)) = e@decl;
-Id lhsDecl(f:fieldAccess(_,_,_)) = f@decl;
-Id lhsDecl(f:fieldAccess(_,_)) = f@decl;
-Id lhsDecl(v:variable(_,_)) = v@decl;
-Id lhsDecl(s:simpleName(_)) = s@decl;
-Id lhsDecl(q:qualifiedName(_,_)) = q@decl;
-default Id lhsDecl(Expression e) { throw "forgot: <e>"; }
+loc lhsDecl(arrayAccess(e,_)) = e@decl;
+loc lhsDecl(f:fieldAccess(_,_,_)) = f@decl;
+loc lhsDecl(f:fieldAccess(_,_)) = f@decl;
+loc lhsDecl(v:variable(_,_)) = v@decl;
+loc lhsDecl(s:simpleName(_)) = s@decl;
+loc lhsDecl(q:qualifiedName(_,_)) = q@decl;
+default loc lhsDecl(Expression e) { throw "forgot: <e>"; }
 
 set[Stm] getStatements(set[Declaration] asts) {
 	allMethods 
@@ -204,38 +204,38 @@ set[Stm] getStatements(set[Declaration] asts) {
 
 // TODO: handle a.b.c => B.c
 
-set[Stm] translate(Id base, Id target, c:cast(_, e)) {
+set[Stm] translate(loc base, loc target, c:cast(_, e)) {
 	if (ignoreType(c@typ)) return {};
 	result = translate(base, target, e);
 	return { s.target == target ? s[cast=c@typ.decl] : s | s <- result};
 }
 
-set[Stm] translate(Id base, Id target, conditional(con, t, e)) 
+set[Stm] translate(loc base, loc target, conditional(con, t, e)) 
 	= translate(base, emptyId, con)
 	+ translate(base, target, t)
 	+ translate(base, target, e)
 	;
 	
 // TODO: check what the second argument could mean (Expr)
-set[Stm] translate(Id base, Id target, f:fieldAccess(_,_,_))
+set[Stm] translate(loc base, loc target, f:fieldAccess(_,_,_))
 	= {Stm::assign(target, emptyId, f@decl)};
-set[Stm] translate(Id base, Id target, f:fieldAccess(_,_))
+set[Stm] translate(loc base, loc target, f:fieldAccess(_,_))
 	= {Stm::assign(target, emptyId, f@decl)};
 
-set[Stm] translate(Id base, Id target, s:simpleName(_))
+set[Stm] translate(loc base, loc target, s:simpleName(_))
 	= {Stm::assign(target, emptyId, s@decl)};
 
 // nested assignment a = b = c;
-set[Stm] translate(Id base, Id target, a:assignment(l,_,r)) 
+set[Stm] translate(loc base, loc target, a:assignment(l,_,r)) 
 	= translate(base, target, l)
 	+ translate(base, target, r)
 	;
 
-set[Stm] translate(Id base, Id target, m:methodCall(s, n, a))
+set[Stm] translate(loc base, loc target, m:methodCall(s, n, a))
 	= translate(base, target, methodCall(s, this(), n, a)[@decl=m@decl][@typ=m@typ][@src=m@src]);
-set[Stm] translate(Id base, Id target, m:methodCall(_, r, n, a)) {
+set[Stm] translate(loc base, loc target, m:methodCall(_, r, n, a)) {
 	set[Stm] stms = {};
-	Id recv = emptyId;
+	loc recv = emptyId;
 	if (this() := r) {
 		recv = base+"this";	
 	}
@@ -259,13 +259,13 @@ private Expression newObject(Type t, list[Expression] args, Expression original)
 		[@decl = original@decl];
 }
 
-set[Stm] translate(Id base, Id target, ob:newObject(_, Type t, a))
+set[Stm] translate(loc base, loc target, ob:newObject(_, Type t, a))
 	= translate(base, target, newObject(t, a, ob));
-set[Stm] translate(Id base, Id target, ob:newObject(_, Type t, a, _))
+set[Stm] translate(loc base, loc target, ob:newObject(_, Type t, a, _))
 	= translate(base, target, newObject(t, a, ob));
-set[Stm] translate(Id base, Id target, ob:newObject(Type t, a,_))
+set[Stm] translate(loc base, loc target, ob:newObject(Type t, a,_))
 	= translate(base, target, newObject(t, a, ob));
-set[Stm] translate(Id base, Id target, ob:newObject(Type t, a)) {
+set[Stm] translate(loc base, loc target, ob:newObject(Type t, a)) {
 	assert target != emptyId;
 	if (ignoreType(ob@typ))
 		return {};
@@ -292,8 +292,8 @@ default Expression removeNesting(Expression e) = e;
 // becomes
 // __param<unique>_0 = new B();
 // .. = new A(__param<unique>_0);
-tuple[list[Id], set[Stm]] unnestExpressions(Id prefix, int uniqNum, list[Expression] exprs) {
-	list[Id] ids = [];
+tuple[list[loc], set[Stm]] unnestExpressions(loc prefix, int uniqNum, list[Expression] exprs) {
+	list[loc] ids = [];
 	set[Stm] newStms = {};
 	for (i <- [0..size(exprs)], Expression ce := exprs[i], !ignoreType(ce@typ)) {
 		ce = removeNesting(ce);
@@ -314,5 +314,5 @@ tuple[list[Id], set[Stm]] unnestExpressions(Id prefix, int uniqNum, list[Express
 	return <ids, newStms>;
 }
 
-default set[Stm] translate(Id base, Id target, Expression e) = { *translate(base, target, ch) | Expression ch <- e};
+default set[Stm] translate(loc base, loc target, Expression e) = { *translate(base, target, ch) | Expression ch <- e};
 
