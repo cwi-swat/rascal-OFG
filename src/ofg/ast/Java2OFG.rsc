@@ -17,7 +17,53 @@ Program createOFG(set[Declaration] asts) {
 	return program(decls, stms);
 }
 
+set[str] containerClasses =  {
+	 "/java/util/Map"
+	,"/java/util/HashMap"
+	,"/java/util/Collection"
+	,"/java/util/Set"
+	,"/java/util/HashSet"
+	,"/java/util/LinkedHashSet"
+	,"/java/util/List"
+	,"/java/util/ArrayList"
+	,"/java/util/LinkedList"
+};
 
+map[str, int] insertArgs = (
+	 "insert": 0
+	, "insertAll": 0
+	, "put": 1
+	, "putAll": 1
+	, "add": 0
+	, "addAll": 0
+);
+
+Expression correctInsertArg(Expression recv, str name, list[Expression] args) {
+	return args[insertArgs[name]];
+}
+
+
+bool isContainerInsert(Expression recv, str name) {
+	tp = (recv@typ).decl.path;
+	if (tp in containerClasses) {
+		return name in insertArgs;
+	}
+	return false;
+}
+
+bool isContainerExtract(Expression recv, str name) {
+	tp = (recv@typ).decl.path;
+	if (tp in containerClasses) {
+		switch (name) {
+			case "get": return true;	
+			case "iterator": return true;	
+			case "toArray": return true;	
+			case "entrySet": return true;	
+			case "values": return true;	
+		}	
+	}
+	return false;
+}
 set[Declaration] fixCollections(set[Declaration] ast) {
 	return visit (ast) {
 		case oe:methodCall(_, Expression receiver, methodName,	args):  {
@@ -116,6 +162,7 @@ set[Stm] getStatements(set[Declaration] asts) {
 		+ {Declaration::method(t, n, p, e, empty())[@decl=m@decl] | /m:Declaration::method(Type t,n,p,e) <- asts} 
 		+ {Declaration::method(simpleType(simpleName(n)), n, p, e, b)[@decl=m@decl] | /m:Declaration::constructor(str n,p,e, b) <- asts} 
 	;
+	allMethods = fixCollections(allMethods);
 	// now remove all nested classes to make all statements relative to a method
 	allMethods = visit(allMethods) {
 		case declarationExpression(Declaration::class(_)) => Expression::null()
