@@ -31,7 +31,7 @@ __make sure you have [installed rascal](http://www.rascal-mpl.org/start/)!__
 ## How to use it?
 The module [`lang::ofg::ast::FlowLanguage`](src/lang/ofg/ast/FlowLanguage.rsc) contains an [ADT](http://tutor.rascal-mpl.org/Rascal/Declarations/AlgebraicDataType/AlgebraicDataType.html) modeling Tonella and Potrich Object Flow Graph language.
 
-The [`lang::off::ast::Java2OFG`](src/lang/ofg/ast/Java2OFG.rsc) module translates a [m3 AST](http://tutor.rascal-mpl.org/Rascal/Libraries/lang/java/m3/AST/Declaration/Declaration.html) into the OFG ADT. 
+The [`lang::ofg::ast::Java2OFG`](src/lang/ofg/ast/Java2OFG.rsc) module translates a [m3 AST](http://tutor.rascal-mpl.org/Rascal/Libraries/lang/java/m3/AST/Declaration/Declaration.html) into the OFG ADT. 
 
 ## I found a bug!
 
