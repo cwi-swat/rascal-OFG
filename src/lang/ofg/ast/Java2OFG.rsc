@@ -64,7 +64,7 @@ bool isContainerExtract(Expression recv, str name) {
 	}
 	return false;
 }
-set[Declaration] fixCollections(set[Declaration] ast) {
+list[Declaration] fixCollections(list[Declaration] ast) {
 	return visit (ast) {
 		case oe:methodCall(_, Expression receiver, methodName,	args):  {
 			if (isContainerInsert(receiver, methodName)) {
@@ -158,9 +158,9 @@ default loc lhsDecl(Expression e) { throw "forgot: <e>"; }
 
 set[Stm] getStatements(set[Declaration] asts) {
 	allMethods 
-		= { m | /m:Declaration::method(_,_,_,_,_) <- asts}
-		+ {Declaration::method(t, n, p, e, empty())[@decl=m@decl] | /m:Declaration::method(Type t,n,p,e) <- asts} 
-		+ {Declaration::method(simpleType(simpleName(n)), n, p, e, b)[@decl=m@decl] | /m:Declaration::constructor(str n,p,e, b) <- asts} 
+		= [ m | /m:Declaration::method(_,_,_,_,_) <- asts]
+		+ [Declaration::method(t, n, p, e, empty())[@decl=m@decl] | /m:Declaration::method(Type t,n,p,e) <- asts] 
+		+ [Declaration::method(simpleType(simpleName(n)), n, p, e, b)[@decl=m@decl] | /m:Declaration::constructor(str n,p,e, b) <- asts]
 	;
 	allMethods = fixCollections(allMethods);
 	// now remove all nested classes to make all statements relative to a method
