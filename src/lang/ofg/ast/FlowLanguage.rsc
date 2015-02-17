@@ -1,6 +1,6 @@
 module lang::ofg::ast::FlowLanguage
 
-data Program = program(set[Decl] decls, set[Stm] statemens);
+data Program = program(set[Decl] decls, set[Stm] statements);
 
 public loc emptyId = |id:///|;
 
