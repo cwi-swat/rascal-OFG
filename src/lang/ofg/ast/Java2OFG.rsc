@@ -33,7 +33,7 @@ map[str, int] insertArgs = (
 	 "insert": 0
 	, "insertAll": 0
 	, "put": 1
-	, "putAll": 1
+	, "putAll": 0
 	, "add": 0
 	, "addAll": 0
 );
