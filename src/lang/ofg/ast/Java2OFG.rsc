@@ -44,9 +44,11 @@ Expression correctInsertArg(Expression recv, str name, list[Expression] args) {
 
 
 bool isContainerInsert(Expression recv, str name) {
-	tp = (recv@typ).decl.path;
-	if (tp in containerClasses) {
-		return name in insertArgs;
+    if (recv@typ has decl) {
+	  tp = (recv@typ).decl.path;
+	  if (tp in containerClasses) {
+	  	return name in insertArgs;
+	  }
 	}
 	return false;
 }
