@@ -54,18 +54,21 @@ bool isContainerInsert(Expression recv, str name) {
 }
 
 bool isContainerExtract(Expression recv, str name) {
-	tp = (recv@typ).decl.path;
-	if (tp in containerClasses) {
-		switch (name) {
-			case "get": return true;	
-			case "iterator": return true;	
-			case "toArray": return true;	
-			case "entrySet": return true;	
-			case "values": return true;	
-		}	
+    if (recv@typ has decl) {
+		tp = (recv@typ).decl.path;
+		if (tp in containerClasses) {
+			switch (name) {
+				case "get": return true;	
+				case "iterator": return true;	
+				case "toArray": return true;	
+				case "entrySet": return true;	
+				case "values": return true;	
+			}	
+		}
 	}
 	return false;
 }
+
 list[Declaration] fixCollections(list[Declaration] ast) {
 	return visit (ast) {
 		case oe:methodCall(_, Expression receiver, methodName,	args):  {
