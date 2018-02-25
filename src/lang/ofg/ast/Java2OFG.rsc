@@ -6,7 +6,6 @@ import List;
 import lang::ofg::ast::FlowLanguage;
 import lang::java::m3::TypeSymbol;
 import lang::java::jdt::m3::AST;
-import analysis::m3::TypeSymbol;
 
 Program createOFG(loc project) = createOFG(createAstsFromEclipseProject(project, true));
 
@@ -321,3 +320,4 @@ tuple[list[loc], set[Stm]] unnestExpressions(loc prefix, int uniqNum, list[Expre
 }
 
 default set[Stm] translate(loc base, loc target, Expression e) = { *translate(base, target, ch) | Expression ch <- e};
+
