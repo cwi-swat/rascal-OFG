@@ -1,3 +1,6 @@
+__Warning this library is outdated, it has been merged into the rascal project. See `analysis::flow::ObjectFlow` and `lang::java::flow::JavaToObjectFlow`__
+
+
 This library translates a Java AST (extracted by m3) to the Object Flow Graph language.
 
 ## How to install it?
